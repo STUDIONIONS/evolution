@@ -1,0 +1,27 @@
+{
+	"name": "projectsoft/evolution",
+	"description": "Composer for Site Evolution CMS Site",
+	"keywords": [],
+	"homepage": "https://github.com/STUDIONIONS/evolution",
+	"type": "library",
+	"minimum-stability": "dev",
+	"prefer-stable": true,
+	"license": "GPL-3.0",
+	"authors": [
+		{
+			"name": "ProjectSoft",
+			"homepage": "https://github.com/ProjectSoft-STUDIONIONS"
+		}
+	],
+	"require": {
+		"php": ">=7.1",
+		"phpoffice/phpspreadsheet": ">=1.9",
+		"mpdf/mpdf": ">=7.0.0",
+		"ps/image-optimizer": ">=2.0"
+	},
+	"autoload": {
+		"psr-0": {
+			"ProjectSoft": "src/"
+		}
+	}
+}
