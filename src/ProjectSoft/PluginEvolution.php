@@ -80,36 +80,62 @@ class PluginEvolution {
 		endif;
 	}
 	
-	private function has()
+	// Open Graph image
+	private static function ogImage(\DocumentParser $modx)
 	{
-		$chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-		$chars_len = strlen($chars);
-		$has = "";
-		for ($i = 0; $i < 10; $i++):
-			$has .= $chars[rand(0, $chars_len - 1)];
-		endfor;
-		return $has;
+		$object = $modx->documentObject;
+		$ID = $object['id'];
+		$img = $object['imgSoc'][1];
+		$out = "";
+		$type = (isset($object['gallery']) || isset($object['advance']));
+		if(isset($object['gallery'])):
+			$display = isset($_GET["advance"]) ? $modx->config["display_advance"] : "all";
+			$json = $modx->runSnippet('multiTV', array(
+				"tvName"		=> "gallery",
+				"docid"			=> $ID,
+				"display"		=> $display,
+				"paginate"		=> 1,
+				"reverse"		=> 1,
+				"toJson"		=> 1
+			));
+			$json = json_decode($json);
+			if(isset($json[0])):
+				$img = MODX_BASE_PATH . $json[0]->image;
+			endif;
+
+			if(isset($_GET["gallery"]) || isset($_GET["advance"])):
+				$i = isset($_GET["gallery"]) ? (int)$_GET["gallery"] - 1 : (isset($_GET["advance"]) ? (int)$_GET["advance"] - 1 : 0);
+
+				if(isset($json[$i])):
+					$img = $json[$i]->image;
+				endif;
+			endif;
+		endif;
+		if(is_file(MODX_BASE_PATH . $img)):
+			$site_url = $modx->config['site_url'];
+			$og_1 = $modx->runSnippet('thumb', array(
+				'input'		=> $img,
+				'options'	=> 'w=537,h=240,f=jpg,zc=T,sx=2'
+			));
+			$og_2 = $modx->runSnippet('thumb', array(
+				'input'		=> $img,
+				'options'	=> 'w=400,h=400,f=jpg,zc=T,sx=2'
+			));
+			$out .= '	<meta itemprop="image" content="' . $site_url . $og_1 . '" />';
+			$out .= PHP_EOL . '		<meta property="og:image" content="' . $site_url . $og_1 . '" />';
+			$out .= PHP_EOL . '		<meta property="og:image:width" content="537" />';
+			$out .= PHP_EOL . '		<meta property="og:image:height" content="240" />';
+			$out .= PHP_EOL . '		<meta property="og:image:type" content="image/jpeg" />';
+			$out .= PHP_EOL . '		<meta property="og:image" content="' . $site_url . $og_2 . '" />';
+			$out .= PHP_EOL . '		<meta property="og:image:width" content="400" />';
+			$out .= PHP_EOL . '		<meta property="og:image:height" content="400" />';
+			$out .= PHP_EOL . '		<meta property="og:image:type" content="image/jpeg" />';
+			$out .= PHP_EOL . '		<meta property="twitter:image0" content="' . $site_url . $img . '" />';
+			$out .= PHP_EOL . '		<meta property="twitter:image1" content="' . $site_url . $og_1 . '" />';
+			$out .= PHP_EOL . '		<meta property="twitter:image2" content="' . $site_url . $og_2 . '" />';
+		endif;
+		return $out;
 	}
-	
-	// Get Code Content
-	public static function preCodeSave(\DocumentParser $modx, $content)
-	{
-		//html_entity_decode
-		$re = '/(<pre(?:.+")?>(?:.+)?<code>)(.*)(<\/code>(?:.+)?<\/pre>)/Usi';
-		$arrCode = array();
-		$content = preg_replace_callback($re, function ($matches) use (&$arrCode) {
-			$md = "@@@" . md5(self::has()) . "@@@";
-			$code = html_entity_decode(trim($matches[2]), ENT_NOQUOTES, $modx->config['modx_charset']);
-			$code = $matches[1] . htmlentities($code, ENT_NOQUOTES, $modx->config['modx_charset']) . $matches[3];
-			$arrCode["/(" . $md . ")/"] = $code;
-			return $md;
-		}, $content);
-		foreach($arrCode as $key=>$value){
-			$content = preg_replace($key, $value, $content);
-		}
-		return $content;
-	}
-	
 	// Минификация HTML кода
 	public static function minifyHTML(\DocumentParser $modx)
 	{
@@ -119,44 +145,48 @@ class PluginEvolution {
 				$minify = false;
 			endif;
 		endif;
-		if($modx->documentObject['minify'][1]==1 && $minify):
-			$str = $modx->documentOutput;
-			$re = '/<pre(?:.*)?>.*<\/pre>/Usi';
-			$count = 0;
-			$arrCode = array();
-			$str = preg_replace_callback($re, function ($matches) use (&$arrCode, &$count) {
-				$mb = "@@@" . md5(self::has()) . "_" . $count . "@@@";
-				$arrCode["/(" . $mb . ")/"] = $matches[0];
-				++$count;
-				return $mb;
-			}, $str);
-			
-			$re = '/((?:content=))(?:"|\')([A-я\S\s\d\D\X\W\w]+)?(?:"|\')/U';
-			$mb = md5(self::has());
-			$str = preg_replace_callback($re, function ($matches) use ($mb) {
-				$res = preg_replace('(\r(?:\n)?)', $mb, $matches[2]);
-				return $matches[1].'"'.$res.'"';
-			}, $str);
-			
-			$str = preg_replace("/<!(--)?(\s+)?(?!\[).*-->/", '', $str);
-			$str = preg_replace("/(\s+)?\n(\s+)?/", '', $str);
-			$str = preg_filter("/\s+/u", ' ', $str);
-			
-			$str = preg_replace("/(" . $mb . ")/", "\n", $str);
-			foreach($arrCode as $key=>$value):
-				$str = preg_replace($key, $value, $str);
-			endforeach;
-			$modx->documentOutput = $str;
+		$str = $modx->documentOutput;
+		if(isset($modx->documentObject['imgSoc'][1])):
+			$ogImage = self::ogImage($modx);
+			$re = '/<head>(.*)<\/head>/Usi';
+			$subst = '<head>$1' . $ogImage . PHP_EOL . '	</head>';
+			$str = preg_replace($re, $subst, $str);
 		endif;
+		if($modx->documentObject['minify'][1]==1 && $minify):
+			$types = array(
+				"application/rss+xml",
+				"text/html",
+				"text/css",
+				"text/xml",
+				"application/json"
+			);
+			if(in_array($modx->documentObject['contentType'], $types)):
+				$re = '/((?:content=))(?:"|\')([A-я\S\s\d\D\X\W\w]+)?(?:"|\')/U';
+				$mb = md5(Util::has());
+				$str = preg_replace_callback($re, function ($matches) use ($mb) {
+					$res = preg_replace('(\r(?:\n)?)', $mb, $matches[2]);
+					return $matches[1].'"'.$res.'"';
+				}, $str);
+				
+				$str = preg_replace("/<!(--)?(\s+)?(?!\[).*-->/", '', $str);
+				$str = preg_replace("/(\s+)?\n(\s+)?/", '', $str);
+				$str = preg_filter("/\s+/u", ' ', $str);
+				
+				$str = preg_replace("/(" . $mb . ")/", "\n", $str);
+			endif;
+		endif;
+		$modx->documentOutput = $str;
 	}
 
 	// Роутер на короткие ссылки по ID документа
 	public static function routeNotFound(\DocumentParser $modx, array $params)
 	{
-		$tmp_url = trim($_SERVER['REQUEST_URI'], '/');
+		$arrReque = explode("?", $_SERVER['REQUEST_URI']);
+		parse_str(htmlspecialchars_decode($_SERVER['QUERY_STRING'], ENT_HTML5), $arrQuery);
+		Util::debug($arrQuery);
+		$tmp_url = trim($arrQuery['q'], '/');
 		$tmp_url = rtrim($tmp_url, $modx->config['friendly_url_suffix']);
 		$url = ltrim($tmp_url, '/');
-		file_put_contents(MODX_BASE_PATH . "reid.txt", print_r($url, true));
 		$arr = explode('/', $url);
 		if(isset($arr[0])):
 			$arr[0] = intval($arr[0]);
@@ -166,7 +196,9 @@ class PluginEvolution {
 			$q = $modx->db->query("SELECT `id` FROM ".$modx->getFullTableName("site_content")." WHERE `id`='".$modx->db->escape($id)."'");
 			$docid = (int)$modx->db->getValue($q);
 			if($docid > 0):
-				$has = "?" . self::has();
+				unset($arrQuery['q']);
+				$arrQuery['hash'] = Util::has();
+				$has = "?" . http_build_query($arrQuery);
 				$url = $modx->makeUrl($docid) . $has;
 				$modx->sendRedirect($url, 0, 'REDIRECT_HEADER', 'HTTP/1.1 301 Moved Permanently');
 			endif;
@@ -183,22 +215,10 @@ class PluginEvolution {
 			foreach ( $iteartion as $file ) {
 				$file->isDir() ?  @rmdir($file) : @unlink($file);
 			}
-			self::setHtaccess($path);
+			Util::setHtaccess($path);
 			return true;
 		endif;
 		return false;
-	}
-
-	private static function setHtaccess(string $path = "")
-	{
-		$dir = rtrim(MODX_BASE_PATH . str_replace(MODX_BASE_PATH, "", $path), "/") . "/";
-		if($dir !== MODX_BASE_PATH && is_dir($dir)):
-			$content .= "<FilesMatch \".(htaccess|htpasswd|ini|phps|fla|psd|log|sh|php|json|xml|txt)$\">
-	Order Allow,Deny
-	Deny from all
-</FilesMatch>".PHP_EOL;
-			@file_put_contents($dir . ".htaccess", $content);
-		endif;
 	}
 
 	public static function addOpenDialog(\DocumentParser $modx, array $params)
@@ -211,13 +231,6 @@ class PluginEvolution {
 		$out .= '<style type="text/css">' . @file_get_contents($dir . "filemanager.css") . '</style>';
 
 		$modx->event->output($out);
-	}
-
-	private function debug($args, string $debug = 'plugin_evolution.txt')
-	{
-		$h = @fopen(MODX_BASE_PATH . $debug, 'a+');
-		@fwrite($h, print_r($args, true) . PHP_EOL);
-		@fclose($h);
 	}
 
 }
