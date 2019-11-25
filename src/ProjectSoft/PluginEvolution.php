@@ -90,7 +90,26 @@ class PluginEvolution {
 		endfor;
 		return $has;
 	}
-
+	
+	// Get Code Content
+	public static function preCodeSave(\DocumentParser $modx, $content)
+	{
+		//html_entity_decode
+		$re = '/(<pre(?:.+")?>(?:.+)?<code>)(.*)(<\/code>(?:.+)?<\/pre>)/Usi';
+		$arrCode = array();
+		$content = preg_replace_callback($re, function ($matches) use (&$arrCode) {
+			$md = "@@@" . md5(self::has()) . "@@@";
+			$code = html_entity_decode(trim($matches[2]), ENT_NOQUOTES, $modx->config['modx_charset']);
+			$code = $matches[1] . htmlentities($code, ENT_NOQUOTES, $modx->config['modx_charset']) . $matches[3];
+			$arrCode["/(" . $md . ")/"] = $code;
+			return $md;
+		}, $content);
+		foreach($arrCode as $key=>$value){
+			$content = preg_replace($key, $value, $content);
+		}
+		return $content;
+	}
+	
 	// Минификация HTML кода
 	public static function minifyHTML(\DocumentParser $modx)
 	{
